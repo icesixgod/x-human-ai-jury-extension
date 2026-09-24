@@ -1,0 +1,15 @@
+import { mkdir, cp, readFile, writeFile, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { hash } from './files.mjs';
+execFileSync(process.execPath,['scripts/release-check.mjs'],{stdio:'inherit'});
+await rm('release',{recursive:true,force:true}); await mkdir('release');
+const meta=JSON.parse(await readFile('dist/extension/build-info.json','utf8'));
+const name=`x-human-ai-jury-${meta.version}.zip`;
+await cp('dist/x-human-ai-jury.zip',`release/${name}`);
+await cp('dist/extension/source.tar.gz','release/source.tar.gz');
+await cp('reports/sbom.cdx.json','release/sbom.cdx.json');
+await cp('dist/extension/build-info.json','release/build-info.json');
+const names=[name,'source.tar.gz','sbom.cdx.json','build-info.json'];
+await writeFile('release/SHA256SUMS',(await Promise.all(names.map(async file=>`${hash(await readFile(`release/${file}`))}  ${file}`))).join('\n')+'\n');
+execFileSync(process.execPath,['scripts/scan.mjs'],{stdio:'inherit'});
+console.log(`Packaged ${name}, extension-only source, SBOM, build metadata and SHA256SUMS.`);

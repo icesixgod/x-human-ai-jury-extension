@@ -1,0 +1,50 @@
+# Keys, local settings and identities (no secret-bearing examples are allowed)
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*token*.txt
+*credentials*.json
+*secret*.json
+# Dependencies, build output and release archives
+node_modules/
+dist/
+build/
+release/
+reports/
+coverage/
+*.tsbuildinfo
+*.log
+*.zip
+*.tar
+*.tar.gz
+.source-build.json
+# Private services, deployments, databases and workspace metadata
+server/
+web/
+deploy/
+migrations/
+drizzle/
+db/
+.wrangler/
+.openai/
+.sites-runtime/
+.workspace-ledger/
+.codex/
+AGENTS.md
+wrangler*.json*
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sql
+# Machine and editor files
+.DS_Store
+.idea/
+.vscode/
