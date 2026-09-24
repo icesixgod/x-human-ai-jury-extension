@@ -65,4 +65,20 @@ it('keeps errors out of the comment row and makes them available in details', as
   updated.querySelector<HTMLButtonElement>('.human')!.click();await vi.advanceTimersByTimeAsync(1);
   expect(uncertain.getAttribute('aria-pressed')).toBe('false');
   expect(updated.querySelector<HTMLButtonElement>('.human')!.getAttribute('aria-pressed')).toBe('true');
+
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation(async (message:any) => message.type==='enabled' ? {ok:true,data:{enabled:true}} : {ok:true,data:{analysis:model,sequence:0,pending:null}});
+  history.replaceState(null,'','/writer/status/10002');
+  document.body.innerHTML=`<section aria-label="Timeline: Conversation">${article('10001','Original')}${article('10002','Focused reply')}</section>`;
+  await vi.advanceTimersByTimeAsync(400);
+  const focused=document.querySelectorAll('article')[1];
+  expect(focused.querySelector('[data-jury]')).not.toBeNull();
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({type:'analyze',snapshot:expect.objectContaining({original:expect.objectContaining({id:'10001'}),comment:expect.objectContaining({id:'10002'})})}));
+  vi.mocked(chrome.runtime.sendMessage).mockClear();
+  document.querySelector('article')!.insertAdjacentHTML('beforeend','<button data-testid="tweet-text-show-more-link">Show more</button>');
+  await vi.advanceTimersByTimeAsync(400);
+  const notice=focused.querySelector('[data-jury]')!.shadowRoot!;
+  expect(notice.querySelector('a')?.getAttribute('href')).toBe('https://x.com/i/status/10001');
+  expect(notice.textContent).toContain('评审 · 打开原帖');
+  expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(expect.objectContaining({type:'analyze'}));
+  expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(expect.objectContaining({type:'community'}));
 });

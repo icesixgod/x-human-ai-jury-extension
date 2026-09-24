@@ -85,3 +85,59 @@ describe('conservative X DOM extraction',()=>{
     expect(target?.textContent).toBe('now');expect(target?.getAttribute('href')).toBe('/writer/status/2');
   });
 });
+
+describe('focused reply details',()=>{
+  it('reviews the focused comment using the visible original, even with no replies below it',()=>{
+    const dom=new JSDOM(`<section aria-label="时间线：对话">${article('1','Original')}${article('2','Focused reply')}</section>`);
+    const result=collectReplies(dom.window.document,'2');
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].snapshot).toMatchObject({original:{id:'1'},comment:{id:'2'}});
+    expect(result.items[0].snapshot).not.toHaveProperty('parent');
+    expect(collectReplies(dom.window.document,'1').items[0].snapshot).toEqual(result.items[0].snapshot);
+  });
+  it('preserves visible parent context without adding review controls to ancestors',()=>{
+    const dom=new JSDOM(`<section aria-label="Timeline: Conversation">${article('1','Original')}${article('2','Parent')}${article('3','Focused')}${article('4','Child')}</section>`);
+    const result=collectReplies(dom.window.document,'3');
+    expect(result.items.map(item=>item.snapshot.comment.id)).toEqual(['3','4']);
+    expect(result.items[0].snapshot).toMatchObject({original:{id:'1'},parent:{id:'2'},comment:{id:'3'}});
+    expect(result.items[1].snapshot).toMatchObject({original:{id:'3'},comment:{id:'4'}});
+  });
+  it('offers the original link for collapsed context and mounts a review after expansion',()=>{
+    const dom=new JSDOM(`<section aria-label="Timeline: Conversation">${article('1','Original','<button data-testid="tweet-text-show-more-link">Show more</button>')}${article('2','Focused')}</section>`);
+    const blocked=collectReplies(dom.window.document,'2');
+    expect(blocked.items).toEqual([]);expect(blocked.incomplete).toHaveLength(1);
+    expect(blocked.incomplete[0].contextUrl).toBe('https://x.com/i/status/1');
+    dom.window.document.querySelector('[data-testid="tweet-text-show-more-link"]')!.remove();
+    const expanded=collectReplies(dom.window.document,'2',blocked.original);
+    expect(expanded.items[0].snapshot.comment.id).toBe('2');expect(expanded.incomplete).toEqual([]);
+  });
+  it('retains only same-page context and discards it when ancestors become incomplete or protected',()=>{
+    const dom=new JSDOM(`<section aria-label="Timeline: Conversation">${article('1','Original')}${article('2','Focused')}</section>`);
+    const original=dom.window.document.querySelector('article')!;
+    const remembered=collectReplies(dom.window.document,'2').original;
+    original.remove();
+    expect(collectReplies(dom.window.document,'2',remembered).items[0].snapshot.original.id).toBe('1');
+    dom.window.document.querySelector('section')!.prepend(original);
+    original.insertAdjacentHTML('beforeend','<button data-testid="tweet-text-show-more-link">Show more</button>');
+    const incomplete=collectReplies(dom.window.document,'2',remembered);
+    expect(incomplete.items).toEqual([]);expect(incomplete.original?.replyContext).toBeUndefined();
+    original.insertAdjacentHTML('beforeend','<span aria-label="Protected account"></span>');
+    expect(collectReplies(dom.window.document,'2',remembered)).toEqual({items:[],incomplete:[]});
+  });
+  it('does not turn a standalone original into a comment using unrelated or quoted posts',()=>{
+    const quoted='<div data-testid="quoteTweet">'+article('99','Quoted')+'</div>';
+    const dom=new JSDOM(article('90','Outside')+`<section aria-label="Timeline: Conversation">${article('2','Original',quoted)}</section>`);
+    const result=collectReplies(dom.window.document,'2');expect(result.items).toEqual([]);expect(result.incomplete).toEqual([]);
+  });
+});
+
+it('keeps the root context during partial ancestor virtualization and never reviews ancestors as descendants',()=>{
+  const dom=new JSDOM(`<section aria-label="Timeline: Conversation">${article('1','Original')}${article('2','Parent')}${article('3','Focused')}${article('4','Child')}</section>`);
+  const [original,,focused]=[...dom.window.document.querySelectorAll('article')];
+  let remembered=collectReplies(dom.window.document,'3').original;
+  original.remove();
+  const partial=collectReplies(dom.window.document,'3',remembered);
+  expect(partial.items[0].snapshot).toMatchObject({original:{id:'1'},parent:{id:'2'},comment:{id:'3'}});
+  remembered=partial.original;focused.remove();
+  expect(collectReplies(dom.window.document,'3',remembered).items.map(item=>item.snapshot.comment.id)).toEqual(['4']);
+});

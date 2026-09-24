@@ -12,7 +12,7 @@ const styles = `:host{display:inline-flex;vertical-align:middle;color:inherit;fo
 let pageId: string | null = null;
 let remembered: ReturnType<typeof collectReplies>['original'];
 const mounted = new Map<Element, { host: HTMLElement; remove: () => void; signature: string; snapshot: Snapshot; refresh: () => Promise<void>; community: () => Promise<void>; done: boolean }>();
-const notices = new Map<Element, { remove: () => void }>();
+const notices = new Map<Element, { remove: () => void; contextUrl?: string }>();
 function insertAfterTime(anchor: HTMLAnchorElement, host: HTMLElement) {
   const parent = anchor.parentElement!;
   const properties = ['flex-wrap', 'white-space', 'overflow-x', 'scrollbar-width'] as const;
@@ -171,16 +171,23 @@ function mount(article: Element, snapshot: Snapshot) {
 }
 declare const __API_ORIGIN__: string;
 let enabled = false;
-function showIncomplete(article: Element) {
-  if (notices.has(article)) return;
+function showIncomplete(article: Element, contextUrl?: string) {
+  const previous = notices.get(article);
+  if (previous && previous.contextUrl === contextUrl) return;
+  previous?.remove();
   const anchor = timestampAnchor(article);
   if (!anchor?.parentElement) return;
   const host = document.createElement('span'); host.setAttribute('data-jury', '');
   const shadow = host.attachShadow({ mode: 'closed' });
   const style = document.createElement('style'); style.textContent = styles;
-  const label = document.createElement('span'); label.className = 'metric'; label.textContent = '上下文不足';
+  const label = document.createElement('span'); label.className = 'metric';
   label.title = '原帖或评论不完整，未发送检测。请展开全文后重试。';
-  shadow.append(style, label); notices.set(article, { remove: insertAfterTime(anchor, host) });
+  if (contextUrl) {
+    const link = document.createElement('a'); link.href = contextUrl; link.textContent = '评审 · 打开原帖';
+    link.title = '上方原帖或上级回复未完整展开。打开原帖后可在评论列表评审。';
+    link.addEventListener('click', event => event.stopPropagation()); label.append(link);
+  } else label.textContent = '上下文不足';
+  shadow.append(style, label); notices.set(article, { remove: insertAfterTime(anchor, host), contextUrl });
 }
 async function scan() {
   const id = statusId(location.pathname);
@@ -191,13 +198,13 @@ async function scan() {
   const data = enabled ? collectReplies(document, id, remembered) : { items: [], incomplete: [], original: undefined }; remembered = data.original;
   const eligible = new Set(data.items.map(item => item.article));
   for (const [article, item] of mounted) if (!article.isConnected || !eligible.has(article)) { item.remove(); observer.unobserve(article); waiting.delete(article); mounted.delete(article); }
-  for (const [article, notice] of notices) if (!article.isConnected || !data.incomplete.includes(article)) { notice.remove(); notices.delete(article); }
+  for (const [article, notice] of notices) if (!article.isConnected || !data.incomplete.some(item => item.article === article)) { notice.remove(); notices.delete(article); }
   for (const { article, snapshot } of data.items) mount(article, snapshot);
   if (!document.hidden) for (const [article, item] of mounted) {
     const rect = article.getBoundingClientRect();
     if (item.done && rect.bottom > 0 && rect.top < innerHeight) void item.community();
   }
-  for (const article of data.incomplete) showIncomplete(article);
+  for (const { article, contextUrl } of data.incomplete) showIncomplete(article, contextUrl);
 }
 let scheduled = false;
 function schedule() { if (scheduled) return; scheduled = true; setTimeout(() => { scheduled = false; void scan(); }, 350); }
